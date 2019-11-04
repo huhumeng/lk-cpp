@@ -1,2 +1,5 @@
 build/*
 result/*
+
+.vscode/*
+.DS_Store
