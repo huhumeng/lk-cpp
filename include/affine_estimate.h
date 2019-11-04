@@ -47,6 +47,10 @@ private:
     // $$W(x; p) \rightarrow W(x; p) \cdot W(x; \Delta p) $$
     void computeFC();
 
+    void computeBA();
+
+    void computeBC();
+
     // only for debug show;
     void debugShow();
 

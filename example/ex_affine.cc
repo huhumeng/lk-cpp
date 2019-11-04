@@ -40,7 +40,7 @@ int main(int argc, char **argv)
     // affine_param.p6 = 50;
 
     AffineEstimator estimator;
-    estimator.compute(image, template_image, affine_param, Method::kForwardCompositional);
+    estimator.compute(image, template_image, affine_param, Method::kBackwardCompositional);
 
     return 0;
 }

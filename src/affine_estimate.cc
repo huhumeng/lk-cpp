@@ -76,6 +76,14 @@ void AffineEstimator::compute(const cv::Mat &source_image, const cv::Mat &templa
         computeFC();
         break;
 
+    case Method::kBackwardAdditive:
+        computeBA();
+        break;
+
+    case Method::kBackwardCompositional:
+        computeBC();
+        break;
+
     default:
         std::cerr << "Invalid method type, please check." << std::endl;
         break;
@@ -123,7 +131,6 @@ void AffineEstimator::computeFA()
 
                 Eigen::Matrix<double, 1, 6> jacobian;
                 jacobian << x * gx_warped, x * gy_warped, y * gx_warped, y * gy_warped, gx_warped, gy_warped;
-
 
                 hessian += jacobian.transpose() * jacobian;
                 residual -= jacobian.transpose() * err;
@@ -227,6 +234,117 @@ void AffineEstimator::computeFC()
 
         Eigen::Map<Eigen::Matrix<double, 6, 1>> increment(inc);
         p += increment;
+
+        std::cout << "Iteration " << i << " cost = " << cost << " squared delta p L2 norm = " << delta_p.squaredNorm() << std::endl;
+
+        if (delta_p.squaredNorm() < 1e-12)
+            break;
+    }
+
+    std::cout << "After " << i + 1 << " iteration, the final estimate affine matrix is: \n"
+              << affine_.p1 + 1 << " " << affine_.p3 << " " << affine_.p5 << " \n"
+              << affine_.p2 << " " << affine_.p4 + 1 << " " << affine_.p6 << std::endl;
+}
+
+void AffineEstimator::computeBA()
+{
+}
+
+void AffineEstimator::computeBC()
+{
+    ImageProcessor temp_proc;
+    temp_proc.setInput(tx_);
+
+    // Pre-compute
+    cv::Mat gx, gy;
+    temp_proc.getGradient(gx, gy);
+
+    cv::Mat xgx(gx.size(), gx.type());
+    cv::Mat xgy(gx.size(), gx.type());
+    cv::Mat ygx(gx.size(), gx.type());
+    cv::Mat ygy(gx.size(), gx.type());
+
+    Eigen::Matrix<double, 6, 6> hessian;
+    hessian.setZero();
+
+    for (int y = 0; y < tx_.rows; y++)
+    {
+        for (int x = 0; x < tx_.cols; x++)
+        {
+            xgx.at<double>(y, x) = x * gx.at<double>(y, x);
+            xgy.at<double>(y, x) = x * gy.at<double>(y, x);
+            ygx.at<double>(y, x) = y * gx.at<double>(y, x);
+            ygy.at<double>(y, x) = y * gy.at<double>(y, x);
+
+            Eigen::Matrix<double, 1, 6> jacobian;
+
+            jacobian << xgx.at<double>(y, x), xgy.at<double>(y, x), ygx.at<double>(y, x), ygy.at<double>(y, x), gx.at<double>(y, x), gy.at<double>(y, x);
+
+            hessian += jacobian.transpose() * jacobian;
+        }
+    }
+
+    std::cout << hessian << std::endl;
+
+    for (int i = 0; i < 6; i++)
+    {
+        for (int j = 0; j < 6; ++j)
+        {
+            if (i != j)
+                hessian(i, j) = 0;            
+        }
+    }
+    
+    Eigen::Matrix<double, 6, 6> H_inv = hessian.inverse();
+
+    int i = 0;
+    for (; i < max_iter_; ++i)
+    {
+
+        if (debug_show_)
+            debugShow();
+
+        Eigen::Matrix<double, 6, 1> residual;
+        residual.setZero();
+
+        double cost = 0.;
+
+        for (int y = 0; y < tx_.rows; y++)
+        {
+            for (int x = 0; x < tx_.cols; x++)
+            {
+
+                double wx = (double)x * (1. + affine_.p1) + (double)y * affine_.p3 + affine_.p5;
+                double wy = (double)x * affine_.p2 + (double)y * (1. + affine_.p4) + affine_.p6;
+
+                if (wx < 1 || wx > image_processor_->width() - 2 || wy < 1 || wy > image_processor_->height() - 2)
+                    continue;
+
+                double err = tx_.at<double>(y, x) - image_processor_->getBilinearInterpolation(wx, wy);
+
+                Eigen::Matrix<double, 1, 6> jacobian;
+                jacobian << xgx.at<double>(y, x), xgy.at<double>(y, x), ygx.at<double>(y, x), ygy.at<double>(y, x), gx.at<double>(y, x), gy.at<double>(y, x);
+
+                residual -= jacobian.transpose() * err;
+
+                cost += err * err;
+            }
+        }
+
+        Eigen::Matrix<double, 6, 1> delta_p = H_inv * residual;
+
+        Eigen::Matrix3d delta_m, warp_m;
+
+        warp_m << 1 + affine_.p1, affine_.p3, affine_.p5, affine_.p2, 1 + affine_.p4, affine_.p6, 0, 0, 1;
+        delta_m << 1 + delta_p(0), delta_p(2), delta_p(4), delta_p(1), 1 + delta_p(3), delta_p(5), 0, 0, 1;
+
+        Eigen::Matrix3d new_warp = warp_m * (delta_m.inverse());
+        affine_.p1 = new_warp(0, 0) - 1.;
+        affine_.p2 = new_warp(1, 0);
+        affine_.p3 = new_warp(0, 1);
+        affine_.p4 = new_warp(1, 1) - 1.;
+        affine_.p5 = new_warp(0, 2);
+        affine_.p6 = new_warp(1, 2);
 
         std::cout << "Iteration " << i << " cost = " << cost << " squared delta p L2 norm = " << delta_p.squaredNorm() << std::endl;
 
