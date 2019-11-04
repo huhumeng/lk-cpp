@@ -6,8 +6,9 @@ It is under development and not bug-free, welcome to contribute.
 OpenCV3, Eigen3
 
 # How to use it
-'''bash
+
+```bash
 mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
 ./ex_affine ../data/takeo.pgm
-'''
+```
