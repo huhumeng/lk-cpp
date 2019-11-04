@@ -18,7 +18,7 @@ bool ImageProcessor::setInput(const cv::Mat &image)
     cv::Mat gray;
 
     // assert image is color bgr or gray
-    if (image.type() != CV_8UC1)
+    if (image.type() == CV_8UC3)
     {
         cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
     }

@@ -21,6 +21,7 @@ public:
 
     static double getBilinearInterpolation(const cv::Mat &image, double x, double y);
 
+
 private:
 
     cv::Mat image_;

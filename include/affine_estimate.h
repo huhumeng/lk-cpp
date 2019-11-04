@@ -45,8 +45,10 @@ private:
     // \sum_x \left [ I(W(W(x; \Delta p); p)) - T(x) \right ]^2
     // and with respect to \Delta p in each iteration updates the estimate of the wrap as:
     // $$W(x; p) \rightarrow W(x; p) \cdot W(x; \Delta p) $$
-    
     void computeFC();
+
+    // only for debug show;
+    void debugShow();
 
     ImageProcessor *image_processor_;
     

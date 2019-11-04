@@ -38,6 +38,23 @@ AffineEstimator::~AffineEstimator()
         delete image_processor_;
 }
 
+void AffineEstimator::debugShow()
+{
+    auto points = affinedRectangle(affine_, cv::Rect2d(0, 0, tx_.cols, tx_.rows));
+
+    cv::Mat imshow = imshow_.clone();
+
+    cv::line(imshow, points[0], points[1], cv::Scalar(0, 0, 255));
+    cv::line(imshow, points[1], points[2], cv::Scalar(0, 0, 255));
+    cv::line(imshow, points[2], points[3], cv::Scalar(0, 0, 255));
+    cv::line(imshow, points[3], points[0], cv::Scalar(0, 0, 255));
+
+    cv::rectangle(imshow, cv::Rect(32, 52, 100, 100), cv::Scalar(0, 255, 0));
+
+    cv::imshow("debug show", imshow);
+    cv::waitKey(0);
+}
+
 void AffineEstimator::compute(const cv::Mat &source_image, const cv::Mat &template_image, const AffineParameter &affine_init, const Method &method)
 {
 
@@ -77,22 +94,7 @@ void AffineEstimator::computeFA()
     {
 
         if (debug_show_)
-        {
-
-            auto points = affinedRectangle(affine_, cv::Rect2d(0, 0, tx_.cols, tx_.rows));
-
-            cv::Mat imshow = imshow_.clone();
-
-            cv::line(imshow, points[0], points[1], cv::Scalar(0, 0, 255));
-            cv::line(imshow, points[1], points[2], cv::Scalar(0, 0, 255));
-            cv::line(imshow, points[2], points[3], cv::Scalar(0, 0, 255));
-            cv::line(imshow, points[3], points[0], cv::Scalar(0, 0, 255));
-
-            cv::rectangle(imshow, cv::Rect(32, 52, 100, 100), cv::Scalar(0, 255, 0));
-
-            cv::imshow("debug show", imshow);
-            cv::waitKey(0);
-        }
+            debugShow();
 
         Eigen::Matrix<double, 6, 6> hessian;
         hessian.setZero();
@@ -116,11 +118,12 @@ void AffineEstimator::computeFA()
 
                 double err = i_warped - tx_.at<double>(y, x);
 
-                double gx_wraped = image_processor_->getBilinearInterpolation(gx, wx, wy);
-                double gy_wraped = image_processor_->getBilinearInterpolation(gy, wx, wy);
+                double gx_warped = image_processor_->getBilinearInterpolation(gx, wx, wy);
+                double gy_warped = image_processor_->getBilinearInterpolation(gy, wx, wy);
 
                 Eigen::Matrix<double, 1, 6> jacobian;
-                jacobian << x * gx_wraped, x * gy_wraped, y * gx_wraped, y * gy_wraped, gx_wraped, gy_wraped;
+                jacobian << x * gx_warped, x * gy_warped, y * gx_warped, y * gy_warped, gx_warped, gy_warped;
+
 
                 hessian += jacobian.transpose() * jacobian;
                 residual -= jacobian.transpose() * err;
@@ -145,33 +148,14 @@ void AffineEstimator::computeFA()
 
 void AffineEstimator::computeFC()
 {
-
-    Eigen::Map<Eigen::Matrix<double, 2, 3, Eigen::RowMajor>> p(affine_.data);
-
-    cv::Mat gx, gy;
-    image_processor_->getGradient(gx, gy);
+    Eigen::Map<Eigen::Matrix<double, 6, 1>> p(affine_.data);
 
     int i = 0;
     for (; i < max_iter_; ++i)
     {
 
         if (debug_show_)
-        {
-
-            auto points = affinedRectangle(affine_, cv::Rect2d(0, 0, tx_.cols, tx_.rows));
-
-            cv::Mat imshow = imshow_.clone();
-
-            cv::line(imshow, points[0], points[1], cv::Scalar(0, 0, 255));
-            cv::line(imshow, points[1], points[2], cv::Scalar(0, 0, 255));
-            cv::line(imshow, points[2], points[3], cv::Scalar(0, 0, 255));
-            cv::line(imshow, points[3], points[0], cv::Scalar(0, 0, 255));
-
-            cv::rectangle(imshow, cv::Rect(32, 52, 100, 100), cv::Scalar(0, 255, 0));
-
-            cv::imshow("debug show", imshow);
-            cv::waitKey(0);
-        }
+            debugShow();
 
         Eigen::Matrix<double, 6, 6> hessian;
         hessian.setZero();
@@ -180,6 +164,8 @@ void AffineEstimator::computeFC()
         residual.setZero();
 
         double cost = 0.;
+
+        cv::Mat warped_i(tx_.size(), CV_64FC1);
 
         for (int y = 0; y < tx_.rows; y++)
         {
@@ -190,34 +176,33 @@ void AffineEstimator::computeFC()
                 double wy = (double)x * affine_.p2 + (double)y * (1. + affine_.p4) + affine_.p6;
 
                 if (wx < 1 || wx > image_processor_->width() - 2 || wy < 1 || wy > image_processor_->height() - 2)
+                {
+                    warped_i.at<double>(y, x) = 0;
                     continue;
+                }
 
-                double i_warped = image_processor_->getBilinearInterpolation(wx, wy);
+                warped_i.at<double>(y, x) = image_processor_->getBilinearInterpolation(wx, wy);
+            }
+        }
 
-                double err = i_warped - tx_.at<double>(y, x);
+        ImageProcessor temp_proc;
+        temp_proc.setInput(warped_i);
 
-                double gx_wraped = image_processor_->getBilinearInterpolation(gx, wx, wy);
-                double gy_wraped = image_processor_->getBilinearInterpolation(gy, wx, wy);
+        cv::Mat warped_gx, warped_gy;
+        temp_proc.getGradient(warped_gx, warped_gy);
+
+        for (int y = 0; y < tx_.rows; y++)
+        {
+            for (int x = 0; x < tx_.cols; x++)
+            {
+                double err = warped_i.at<double>(y, x) - tx_.at<double>(y, x);
 
                 Eigen::Matrix<double, 1, 6> jacobian;
-                
-                Eigen::Matrix<double, 1, 2> j_I_x;
-                j_I_x << gx_wraped, gy_wraped;
 
-                Eigen::Matrix2d j_w_x;
-                j_w_x << 1 + affine_.p1, affine_.p3, affine_.p2, 1 + affine_.p4;
+                double gx_warped = warped_gx.at<double>(y, x);
+                double gy_warped = warped_gy.at<double>(y, x);
 
-                Eigen::Matrix<double, 2, 6> j_w_p;
-                j_w_p.setZero();
-                j_w_p(0, 0) = x;
-                j_w_p(0, 2) = y;
-                j_w_p(0, 4) = 1;
-                j_w_p(1, 1) = x;
-                j_w_p(1, 3) = y;
-                j_w_p(1, 5) = 1;
-
-
-                jacobian = j_I_x * j_w_x * j_w_p;
+                jacobian << x * gx_warped, x * gy_warped, y * gx_warped, y * gy_warped, gx_warped, gy_warped;
 
                 hessian += jacobian.transpose() * jacobian;
                 residual -= jacobian.transpose() * err;
@@ -226,33 +211,22 @@ void AffineEstimator::computeFC()
             }
         }
 
-        double delta_p_data[9] = {0.};
+        double delta_p_data[6] = {0.};
         Eigen::Map<Eigen::Matrix<double, 6, 1>> delta_p(delta_p_data);
 
         delta_p = hessian.inverse() * residual;
 
-        Eigen::Map<Eigen::Matrix<double, 3, 3, Eigen::RowMajor>> Delta_p(delta_p_data);
-        Delta_p(0, 0) += 1.;
-        Delta_p(1, 1) += 1.;
-        Delta_p(2, 2) = 1.;
+        double inc[6] = {0.};
+        memcpy(inc, delta_p_data, sizeof(double) * 6);
+        inc[0] += (affine_.p1 * delta_p_data[0] + affine_.p3 * delta_p_data[1]);
+        inc[1] += (affine_.p2 * delta_p_data[0] + affine_.p4 * delta_p_data[1]);
+        inc[2] += (affine_.p1 * delta_p_data[2] + affine_.p3 * delta_p_data[3]);
+        inc[3] += (affine_.p2 * delta_p_data[2] + affine_.p4 * delta_p_data[3]);
+        inc[4] += (affine_.p1 * delta_p_data[4] + affine_.p3 * delta_p_data[5]);
+        inc[5] += (affine_.p2 * delta_p_data[4] + affine_.p4 * delta_p_data[5]);
 
-        std::swap(p(0, 1), p(1, 0));
-        std::swap(p(0, 1), p(1, 1));
-        std::swap(p(0, 1), p(0, 2));
-
-        p(0, 0) += 1.;
-        p(1, 1) += 1.;
-        
-        // std::cout << p << std::endl;
-        p *= Delta_p;
-
-        p(0, 0) -= 1.;
-        p(1, 1) -= 1.;
-
-        std::swap(p(1, 0), p(0, 1));
-        std::swap(p(1, 0), p(0, 2));
-        std::swap(p(1, 0), p(1, 1));
-        
+        Eigen::Map<Eigen::Matrix<double, 6, 1>> increment(inc);
+        p += increment;
 
         std::cout << "Iteration " << i << " cost = " << cost << " squared delta p L2 norm = " << delta_p.squaredNorm() << std::endl;
 

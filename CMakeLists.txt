@@ -21,3 +21,6 @@ target_link_libraries(${PROJECT_NAME}_core
 
 add_executable(ex_affine example/ex_affine.cc)
 target_link_libraries(ex_affine ${PROJECT_NAME}_core)
+
+add_executable(ex_equal example/ex_equal.cc)
+target_link_libraries(ex_equal ${PROJECT_NAME}_core)
