@@ -248,6 +248,108 @@ void AffineEstimator::computeFC()
 
 void AffineEstimator::computeBA()
 {
+
+    Eigen::Map<Eigen::Matrix<double, 6, 1>> p(affine_.data);
+
+    ImageProcessor temp_proc;
+    temp_proc.setInput(tx_);
+
+    // Pre-compute
+    cv::Mat gx, gy;
+    temp_proc.getGradient(gx, gy);
+
+    cv::Mat xgx(gx.size(), gx.type());
+    cv::Mat xgy(gx.size(), gx.type());
+    cv::Mat ygx(gx.size(), gx.type());
+    cv::Mat ygy(gx.size(), gx.type());
+
+    Eigen::Matrix<double, 6, 6> hessian_star;
+    hessian_star.setZero();
+
+    for (int y = 0; y < tx_.rows; y++)
+    {
+        for (int x = 0; x < tx_.cols; x++)
+        {
+            xgx.at<double>(y, x) = x * gx.at<double>(y, x);
+            xgy.at<double>(y, x) = x * gy.at<double>(y, x);
+            ygx.at<double>(y, x) = y * gx.at<double>(y, x);
+            ygy.at<double>(y, x) = y * gy.at<double>(y, x);
+
+            Eigen::Matrix<double, 1, 6> jacobian;
+
+            jacobian << xgx.at<double>(y, x), xgy.at<double>(y, x), ygx.at<double>(y, x), ygy.at<double>(y, x), gx.at<double>(y, x), gy.at<double>(y, x);
+
+            hessian_star += jacobian.transpose() * jacobian;
+        }
+    }
+
+    Eigen::Matrix<double, 6, 6> H_inv = hessian_star.inverse();
+
+    int i = 0;
+    for (; i < max_iter_; ++i)
+    {
+
+        if (debug_show_)
+            debugShow();
+
+        Eigen::Matrix<double, 6, 1> residual;
+        residual.setZero();
+
+        double cost = 0.;
+
+        for (int y = 0; y < tx_.rows; y++)
+        {
+            for (int x = 0; x < tx_.cols; x++)
+            {
+
+                double wx = (double)x * (1. + affine_.p1) + (double)y * affine_.p3 + affine_.p5;
+                double wy = (double)x * affine_.p2 + (double)y * (1. + affine_.p4) + affine_.p6;
+
+                if (wx < 1 || wx > image_processor_->width() - 2 || wy < 1 || wy > image_processor_->height() - 2)
+                    continue;
+
+                double err = tx_.at<double>(y, x) - image_processor_->getBilinearInterpolation(wx, wy);
+
+                Eigen::Matrix<double, 1, 6> jacobian;
+                jacobian << xgx.at<double>(y, x), xgy.at<double>(y, x), ygx.at<double>(y, x), ygy.at<double>(y, x), gx.at<double>(y, x), gy.at<double>(y, x);
+
+                residual -= jacobian.transpose() * err;
+
+                cost += err * err;
+            }
+        }
+
+        Eigen::Matrix<double, 6, 6> sigma;
+        sigma.setZero();
+
+        sigma(0, 0) = 1 + affine_.p1;
+        sigma(0, 1) = affine_.p3;
+        sigma(1, 0) = affine_.p2;
+        sigma(1, 1) = 1 + affine_.p4; 
+
+        sigma(2, 2) = 1 + affine_.p1;
+        sigma(2, 3) = affine_.p3;
+        sigma(3, 2) = affine_.p2;
+        sigma(3, 3) = 1 + affine_.p4; 
+
+        sigma(4, 4) = 1 + affine_.p1;
+        sigma(4, 5) = affine_.p3;
+        sigma(5, 4) = affine_.p2;
+        sigma(5, 5) = 1 + affine_.p4; 
+
+        Eigen::Matrix<double, 6, 1> delta_p = sigma * H_inv * residual;
+
+        p -= delta_p;
+
+        std::cout << "Iteration " << i << " cost = " << cost << " squared delta p L2 norm = " << delta_p.squaredNorm() << std::endl;
+
+        if (delta_p.squaredNorm() < 1e-12)
+            break;
+    }
+
+    std::cout << "After " << i + 1 << " iteration, the final estimate affine matrix is: \n"
+              << affine_.p1 + 1 << " " << affine_.p3 << " " << affine_.p5 << " \n"
+              << affine_.p2 << " " << affine_.p4 + 1 << " " << affine_.p6 << std::endl;
 }
 
 void AffineEstimator::computeBC()
@@ -284,17 +386,15 @@ void AffineEstimator::computeBC()
         }
     }
 
-    std::cout << hessian << std::endl;
-
     for (int i = 0; i < 6; i++)
     {
         for (int j = 0; j < 6; ++j)
         {
             if (i != j)
-                hessian(i, j) = 0;            
+                hessian(i, j) = 0;
         }
     }
-    
+
     Eigen::Matrix<double, 6, 6> H_inv = hessian.inverse();
 
     int i = 0;

@@ -25,22 +25,22 @@ int main(int argc, char **argv)
 
     AffineEstimator::AffineParameter affine_param;
     
-    affine_param.p1 = 0.05;
-    affine_param.p2 = 0.1;
-    affine_param.p3 = 0.1;
-    affine_param.p4 = 0.1;
-    affine_param.p5 = 20;
-    affine_param.p6 = 30;
+    // affine_param.p1 = 0.05;
+    // affine_param.p2 = 0.1;
+    // affine_param.p3 = 0.1;
+    // affine_param.p4 = 0.1;
+    // affine_param.p5 = 20;
+    // affine_param.p6 = 30;
 
-    // affine_param.p1 = 0;
-    // affine_param.p2 = 0;
-    // affine_param.p3 = 0;
-    // affine_param.p4 = 0;
-    // affine_param.p5 = 30;
-    // affine_param.p6 = 50;
+    affine_param.p1 = 0;
+    affine_param.p2 = 0;
+    affine_param.p3 = 0;
+    affine_param.p4 = 0;
+    affine_param.p5 = 30;
+    affine_param.p6 = 50;
 
     AffineEstimator estimator;
-    estimator.compute(image, template_image, affine_param, Method::kBackwardCompositional);
+    estimator.compute(image, template_image, affine_param, Method::kBackwardAdditive);
 
     return 0;
 }
