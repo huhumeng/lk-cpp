@@ -386,14 +386,14 @@ void AffineEstimator::computeBC()
         }
     }
 
-    for (int i = 0; i < 6; i++)
-    {
-        for (int j = 0; j < 6; ++j)
-        {
-            if (i != j)
-                hessian(i, j) = 0;
-        }
-    }
+    // for (int i = 0; i < 6; i++)
+    // {
+    //     for (int j = 0; j < 6; ++j)
+    //     {
+    //         if (i != j)
+    //             hessian(i, j) = 0;
+    //     }
+    // }
 
     Eigen::Matrix<double, 6, 6> H_inv = hessian.inverse();
 
